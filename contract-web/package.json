@@ -1,0 +1,19 @@
+{
+  "name": "contract-web",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "description": "企业合同风控智能审核 Agent 前端（报告页与复核页）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.21"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "vite": "^5.2.11"
+  }
+}

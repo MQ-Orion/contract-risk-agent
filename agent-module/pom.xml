@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.crag</groupId>
+        <artifactId>contract-risk-agent</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>agent-module</artifactId>
+    <name>agent-module</name>
+    <description>
+        抽取、规则校验、工具编排、风险判断、报告组装（禁止直接写数据库表，禁止内联 Prompt）。
+        该模块位于依赖图顶端（表3），单一 Spring Boot 应用的启动类在此。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.crag</groupId>
+            <artifactId>doc-module</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.crag</groupId>
+            <artifactId>kb-module</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.crag</groupId>
+            <artifactId>retrieval-module</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.crag</groupId>
+            <artifactId>audit-module</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- 规则与模型调用日志持久化（rule_config/rule_change_log/model_call_log 归属 agent，规范 4.2） -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- 规则表达式引擎（规范 8.2） -->
+        <dependency>
+            <groupId>com.googlecode.aviator</groupId>
+            <artifactId>aviator</artifactId>
+        </dependency>
+
+        <!-- 报告导出 DOCX（规范 9.3）：复用与 doc 模块一致的 POI 版本基线 -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+
+        <!-- 迁移：Flyway 10.x（规范 2.4），PostgreSQL 支持已拆分为独立模块 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>${flyway.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>${flyway.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- 把仓库根目录的 db/migration 打进 classpath，Flyway 与 jar 运行使用同一份脚本（规范 3.1） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-db-migrations</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/db/migration</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.parent.basedir}/db/migration</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

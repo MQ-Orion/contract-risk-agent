@@ -1,0 +1,138 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: contract-risk-agent
+  servlet:
+    multipart:
+      # 单文件 50MB 上限（规范 5.1），请求体略大以容纳表单开销
+      max-file-size: 50MB
+      max-request-size: 52MB
+  datasource:
+    # 默认端口 5434 与 docker/compose.yaml 一致，避开本机已安装的 PostgreSQL（5432）
+    url: jdbc:postgresql://${DB_HOST:127.0.0.1}:${DB_PORT:5434}/${DB_NAME:contract_risk}
+    # 本地默认值必须与 docker/compose.yaml 的 POSTGRES_USER/POSTGRES_PASSWORD 一致；
+    # 密码不设默认值：仓库不得包含可用口令，启动前必须经 DB_PASSWORD 注入（规范 11.5）
+    username: ${DB_USER:crag}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 2
+  flyway:
+    # 迁移由应用启动时执行，脚本随构建打进 classpath（规范 4.5、15.4）
+    enabled: true
+    locations: classpath:db/migration
+    # db/init 在 public 建扩展与分词配置，schema 非空；基线下限 0 让 Flyway 执行全部迁移
+    baseline-on-migrate: true
+    baseline-version: "0"
+    validate-on-migrate: true
+    clean-disabled: true
+    # 关闭占位符替换：迁移脚本里有 JSON 字面量（规则正反例），"${...}" 会被当成占位符解析失败；
+    # 项目不使用 Flyway 占位符，关闭后脚本内容按原样执行。
+    placeholder-replacement: false
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      # 默认端口 6381 与 docker/compose.yaml 一致，避开本机已安装的 Redis（6379）
+      port: ${REDIS_PORT:6381}
+      # 密钥一律经环境变量注入，禁止入仓（规范 11.5）
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+  jackson:
+    default-property-inclusion: non_null
+
+crag:
+  security:
+    # 开发期固定身份来源；生产必须切换为 token，切换前启动会失败而不是静默降级（规范 10.3）
+    tenant-source: static
+    dev-tenant-id: 1
+    dev-user-id: 1
+  id:
+    # 工作节点编号，多实例部署必须唯一（规范 4.1）
+    worker-id: ${CRAG_WORKER_ID:0}
+  doc:
+    # 合同存储根目录，必须与网站静态目录分离（规范 5.1）
+    storage-root: ${CRAG_STORAGE_ROOT:./data/contracts}
+    # 解析锁实现：redis 为多实例正确实现；本地无 Redis 时可临时改为 memory
+    lock-mode: ${CRAG_LOCK_MODE:redis}
+    parse-pool-core-size: 4
+    parse-pool-max-size: 8
+    parse-pool-queue-capacity: 100
+  # 条款切分参数：知识库与合同共用同一份配置（规范 5.3、5.4）
+  split:
+    # 单条条款最大字符数（单位：字符）
+    max-chars: 800
+    # 窗口重叠比例（单位：比例）
+    overlap-ratio: 0.10
+  # 向量模型：OpenAI 兼容协议，密钥只经环境变量注入（规范 7.7、11.5）
+  embedding:
+    base-url: ${EMBEDDING_BASE_URL:https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1}
+    model: ${EMBEDDING_MODEL:qwen3.7-text-embedding-flash}
+    # 维度必须与数据库 vector(1024) 一致（规范 4.3）
+    dimension: 1024
+    api-key: ${DASHSCOPE_API_KEY:}
+    batch-size: 10
+    connect-timeout-millis: 5000
+    read-timeout-millis: 60000
+    retry-times: 2
+  kb:
+    # 每日对账任务 cron（默认凌晨 2:30，多实例由 ShedLock 互斥）
+    reconcile-cron: "0 30 2 * * *"
+  # 对话模型（规范 7.6、7.7）：OpenAI 兼容协议，密钥仅经环境变量注入
+  model:
+    base-url: ${MODEL_BASE_URL:https://cn-beijing.maas.qianwenaiapi.com/compatible-mode/v1}
+    model: ${CHAT_MODEL:qwen3.8-flash}
+    # 版本描述：留空时以模型名代替
+    model-version: ${CHAT_MODEL_VERSION:}
+    api-key: ${DASHSCOPE_API_KEY:}
+    temperature: 0.1
+    top-p: 0.9
+    max-output-tokens: 2000
+    connect-timeout-millis: 5000
+    read-timeout-millis: 60000
+    retry-times: 2
+    concurrency: 8
+    queue-capacity: 32
+    failure-threshold: 10
+    failure-window-millis: 60000
+    open-millis: 300000
+    token-budget-per-contract: 60000
+    max-context-chunks: 6
+    max-context-chars: 800
+    # 条款类型模型兜底：最低置信度与最大输入字符（规范 5.3）
+    clause-type-min-confidence: 0.6
+    clause-type-max-chars: 600
+  # 初审编排（规范 7.2）：单合同最多调用模型的条款数，用于控制成本与延迟
+  review:
+    max-model-clauses: 6
+  # 报告导出（规范 9.3）：按合同覆盖写，路径与合同原文目录分离
+  report:
+    storage-root: ${CRAG_REPORT_ROOT:./data/reports}
+  # 规则引擎（规范 8.1、8.2）：刷新间隔不超过 60 秒，求值超时 1 秒
+  rule:
+    refresh-millis: ${CRAG_RULE_REFRESH_MILLIS:30000}
+    initial-delay-millis: 3000
+    eval-timeout-millis: 1000
+  # 检索参数（规范 6.2–6.6）
+  retrieval:
+    # 融合后送入上层条数
+    top-k: 6
+    # 单路召回条数
+    per-path-limit: 20
+    # 单路超时（毫秒）
+    timeout-millis: 300
+    # 置信度阈值：开发集标定建议 0.54，取 0.50 保留余量（标定过程见 docs/eval/retrieval-*.md）
+    min-score: 0.50
+    # RRF 参数 k
+    rrf-k: 60
+    # 缓存有效期（分钟）
+    cache-ttl-minutes: 30
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId}] %logger{36} - %msg%n"
+  level:
+    root: INFO
+    com.crag: INFO

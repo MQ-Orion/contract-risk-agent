@@ -1,0 +1,10 @@
+[
+  { "id": "hn01", "query": "竞业限制的经济补偿标准是多少", "clauseType": "BREACH", "split": "dev", "reason": "语料未覆盖竞业限制" },
+  { "id": "hn02", "query": "跨境数据传输需要做哪些安全评估", "clauseType": "CONFIDENTIALITY", "split": "dev", "reason": "语料未覆盖数据合规" },
+  { "id": "hn03", "query": "知识产权归属如何约定", "clauseType": "OTHER", "split": "dev", "reason": "语料未覆盖知识产权" },
+  { "id": "hn04", "query": "不可抗力导致工期延误如何顺延", "clauseType": "DISCLAIMER", "split": "dev", "reason": "语料未覆盖工期条款" },
+  { "id": "hn05", "query": "股权回购价格如何计算", "clauseType": "OTHER", "split": "val", "reason": "语料未覆盖股权条款" },
+  { "id": "hn06", "query": "劳动合同试用期最长多久", "clauseType": "OTHER", "split": "val", "reason": "语料未覆盖劳动用工" },
+  { "id": "hn07", "query": "出口管制清单如何申报", "clauseType": "OTHER", "split": "val", "reason": "语料未覆盖出口管制" },
+  { "id": "hn08", "query": "担保物权的实现顺序是什么", "clauseType": "BREACH", "split": "val", "reason": "语料未覆盖物权担保" }
+]

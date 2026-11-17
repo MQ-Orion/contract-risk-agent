@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  知识库文档 Mapper（仅 kb-module 可写，规范 2.2）。
+
+  SQL 放 XML 的原因与 KbChunkMapper 相同：注解里的 SQL 会被 IDE 当成裸 SQL 检查，
+  而 Mapper XML 才会被识别为 MyBatis 语句；同时这里关闭租户自动注入（跨租户对账），
+  语句自身只读 tenant_id，不涉及写入，风险可控。
+-->
+<mapper namespace="com.crag.kb.infrastructure.persistence.mapper.KbDocMapper">
+
+    <!-- 查询有在架文档的租户列表，供每日对账任务遍历（任务本身跨租户，需关闭自动注入） -->
+    <select id="selectActiveTenantIds" resultType="java.lang.Long">
+        SELECT DISTINCT tenant_id
+        FROM kb_doc
+        WHERE deleted = 0
+          AND is_active = 1
+    </select>
+
+</mapper>

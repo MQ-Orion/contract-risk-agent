@@ -1,0 +1,63 @@
+[
+  {
+    "id": "ml01",
+    "query": "预付款最多能付多少、账期上限与结算安排",
+    "clauseType": "PAYMENT",
+    "split": "dev",
+    "expected": [
+      { "doc": "采购管理制度", "clauseNo": "第四条" },
+      { "doc": "付款审批制度", "clauseNo": "第三条" },
+      { "doc": "付款审批制度", "clauseNo": "第五条" }
+    ]
+  },
+  {
+    "id": "ml02",
+    "query": "违约金计算标准与逾期付款违约金如何约定",
+    "clauseType": "BREACH",
+    "split": "dev",
+    "expected": [
+      { "doc": "合同违约处理规范", "clauseNo": "第三条" },
+      { "doc": "合同违约处理规范", "clauseNo": "第五条" }
+    ]
+  },
+  {
+    "id": "ml03",
+    "query": "保密期限与对外披露审批要求",
+    "clauseType": "CONFIDENTIALITY",
+    "split": "dev",
+    "expected": [
+      { "doc": "保密管理制度", "clauseNo": "第四条" },
+      { "doc": "保密管理制度", "clauseNo": "第六条" }
+    ]
+  },
+  {
+    "id": "ml04",
+    "query": "管辖法院怎么选、什么情况下适用仲裁",
+    "clauseType": "JURISDICTION",
+    "split": "dev",
+    "expected": [
+      { "doc": "争议解决工作指引", "clauseNo": "第四条" },
+      { "doc": "争议解决工作指引", "clauseNo": "第五条" }
+    ]
+  },
+  {
+    "id": "ml05",
+    "query": "合同解除条件与损失赔偿范围",
+    "clauseType": "BREACH",
+    "split": "val",
+    "expected": [
+      { "doc": "合同违约处理规范", "clauseNo": "第四条" },
+      { "doc": "合同违约处理规范", "clauseNo": "第六条" }
+    ]
+  },
+  {
+    "id": "ml06",
+    "query": "合同起草法律审查与用印签署授权",
+    "clauseType": "OTHER",
+    "split": "val",
+    "expected": [
+      { "doc": "合同管理办法", "clauseNo": "第三条" },
+      { "doc": "合同管理办法", "clauseNo": "第四条" }
+    ]
+  }
+]

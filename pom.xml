@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      企业合同风控智能审核 Agent / Contract Risk Audit RAG Agent
+      聚合 POM：统一版本管理（开发规范 2.4）。子模块禁止各自声明依赖版本。
+      构建基线：JDK 17（2.4）、Spring Boot 3.2.x（2.4）。
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.crag</groupId>
+    <artifactId>contract-risk-agent</artifactId>
+    <version>0.1.0</version>
+    <packaging>pom</packaging>
+    <name>contract-risk-agent</name>
+    <description>企业合同风控智能审核 Agent（模块化单体）</description>
+
+    <modules>
+        <module>common-module</module>
+        <module>doc-module</module>
+        <module>kb-module</module>
+        <module>retrieval-module</module>
+        <module>agent-module</module>
+        <module>audit-module</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <tika.version>2.9.1</tika.version>
+        <poi.version>5.2.3</poi.version>
+        <mybatis-plus.version>3.5.5</mybatis-plus.version>
+        <swagger-annotations.version>2.2.19</swagger-annotations.version>
+        <!-- 规则表达式引擎（规范 8.2 未指定引擎，负责人 2026-11-14 选定）：轻量、可禁用反射与 new -->
+        <aviator.version>5.4.3</aviator.version>
+        <!-- PostgreSQL 16 驱动；版本在聚合 POM 统一锁定（规范 2.4） -->
+        <postgresql.version>42.7.3</postgresql.version>
+
+        <!-- 迁移与执行类组件的版本基线，见 2.4；实际引入时按本节锁定 -->
+        <flyway.version>10.10.0</flyway.version>
+        <shedlock.version>5.13.0</shedlock.version>
+        <testcontainers.version>1.19.7</testcontainers.version>
+
+        <!--
+          本地/CI 额外 JVM 参数占位：留空即默认行为。
+          典型用途：Docker Engine 29+ 最低 API 1.40，而 docker-java 默认 1.32 会被拒（HTTP 400），
+          此时传 -Dcrag.surefire.argLine=-Dapi.version=1.43 即可（见 docs/ci.md 第 3 节）。
+        -->
+        <crag.surefire.argLine></crag.surefire.argLine>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- 模块间依赖，只允许单向（表3 模块依赖白名单） -->
+            <dependency>
+                <groupId>com.crag</groupId>
+                <artifactId>common-module</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.crag</groupId>
+                <artifactId>doc-module</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.crag</groupId>
+                <artifactId>kb-module</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.crag</groupId>
+                <artifactId>retrieval-module</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.crag</groupId>
+                <artifactId>audit-module</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- 解析：Tika 2.x（2.4），表格行列由 POI/pdfbox 二次还原（5.2） -->
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-core</artifactId>
+                <version>${tika.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tika</groupId>
+                <artifactId>tika-parsers-standard-package</artifactId>
+                <version>${tika.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.poi</groupId>
+                <artifactId>poi-ooxml</artifactId>
+                <version>${poi.version}</version>
+            </dependency>
+
+            <!-- 持久层：MyBatis-Plus 3.5.x（2.4） -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- 接口注解：只引入注解包，不引入运行时文档服务（3.11） -->
+            <dependency>
+                <groupId>io.swagger.core.v3</groupId>
+                <artifactId>swagger-annotations-jakarta</artifactId>
+                <version>${swagger-annotations.version}</version>
+            </dependency>
+
+            <!-- 规则表达式引擎（规范 8.2）：只做确定性计算，禁止访问 IO/数据库/反射 -->
+            <dependency>
+                <groupId>com.googlecode.aviator</groupId>
+                <artifactId>aviator</artifactId>
+                <version>${aviator.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <!-- 覆盖率：规范 12.5 要求核心类 ≥60%，先出报告，阈值随实测再定 -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <configuration>
+                    <!-- 仓库路径含中文时 JaCoCo agent 写 exec 会静默失败，改用 ASCII 临时目录 -->
+                    <destFile>${java.io.tmpdir}/crag-jacoco/${project.artifactId}.exec</destFile>
+                    <dataFile>${java.io.tmpdir}/crag-jacoco/${project.artifactId}.exec</dataFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <release>17</release>
+                        <encoding>UTF-8</encoding>
+                        <parameters>true</parameters>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.2.5</version>
+                    <configuration>
+                        <argLine>@{argLine} -Dfile.encoding=UTF-8 -Djdk.attach.allowAttachSelf=true ${crag.surefire.argLine}</argLine>
+                        <systemPropertyVariables>
+                            <crag.workspace.root>${maven.multiModuleProjectDirectory}</crag.workspace.root>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

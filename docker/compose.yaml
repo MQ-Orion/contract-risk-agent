@@ -1,0 +1,60 @@
+name: crag
+
+# 企业合同风控智能审核 Agent —— 本地依赖环境（规范 15.1：一条命令从零重建）
+# 用法：cd docker && copy .env.example .env && docker compose up -d
+# 说明：本文件只拉起依赖（PostgreSQL 16 + pgvector + zhparser、Redis 8），应用镜像编排在第 12 周发布里程碑补齐。
+
+services:
+  postgres:
+    # 本地构建：pgvector 16 + zhparser 中文分词（规范 6.5、15.1）
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    image: crag-postgres:16-zhparser
+    container_name: crag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-contract_risk}
+      POSTGRES_USER: ${POSTGRES_USER:-crag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crag-dev}
+      # 统一 UTC，避免容器时区影响审计时间（规范 4.1）
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # 默认 5434，避开本机已安装的 PostgreSQL（5432）
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 扩展、分词配置与通用函数在首次初始化时自动执行（规范 3.1 db/init）
+      - ../db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crag} -d ${POSTGRES_DB:-contract_risk}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  redis:
+    # 规范 2.4 基线为 Redis 7.x；本项目开发环境经项目负责人确认改用 8.x，
+    # 偏差登记见 docs/adr/0002 偏差 10
+    image: redis:8-alpine
+    container_name: crag-redis
+    restart: unless-stopped
+    # 仅本地开发使用；AOF 保证任务状态与锁在重启后不丢失
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    environment:
+      TZ: UTC
+    ports:
+      # 默认 6381，避开本机已安装的 Redis（6379）
+      - "127.0.0.1:${REDIS_PORT:-6381}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
+  redisdata:

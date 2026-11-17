@@ -1,0 +1,104 @@
+{
+  "meta": {
+    "purpose": "抽取与原文回验评估集（规范 7.4、7.5、12.3）",
+    "note": "全部为虚构样例，不含真实合同主体与金额；modelOutput 是固定响应替身，供 CI 确定性校验（规范 13.2）",
+    "split": { "dev": ["ex01", "ex02", "ex03", "ex04"], "val": ["ex05", "ex06"] }
+  },
+  "cases": [
+    {
+      "id": "ex01",
+      "title": "标准采购合同：金额、账期、管辖地均可抽取",
+      "clauses": [
+        { "clauseNo": "第二条", "clauseType": "PAYMENT", "text": "合同总价为人民币壹佰贰拾万元整（￥1,200,000.00）。" },
+        { "clauseNo": "第三条", "clauseType": "PAYMENT", "text": "甲方应在收到发票后 60 日内支付全部价款。" },
+        { "clauseNo": "第八条", "clauseType": "JURISDICTION", "text": "因本合同引起的争议，由上海市浦东新区人民法院管辖。" }
+      ],
+      "modelOutput": "{\"contractAmount\":{\"value\":1200000,\"span\":\"合同总价为人民币壹佰贰拾万元整\"},\"paymentDays\":{\"value\":60,\"span\":\"收到发票后 60 日内\"},\"jurisdiction\":{\"value\":\"上海市\",\"span\":\"由上海市浦东新区人民法院管辖\"},\"hasJointLiability\":null}",
+      "expect": {
+        "status": "VERIFIED",
+        "contractAmount": 1200000,
+        "paymentDays": 60,
+        "jurisdiction": "上海市",
+        "hasJointLiability": null,
+        "verifiedRate": 1.0
+      }
+    },
+    {
+      "id": "ex02",
+      "title": "含连带责任与担保条款",
+      "clauses": [
+        { "clauseNo": "第五条", "clauseType": "BREACH", "text": "丙方自愿为乙方在本合同项下的全部债务提供担保。" },
+        { "clauseNo": "第六条", "clauseType": "BREACH", "text": "丙方对乙方上述债务承担连带责任。" },
+        { "clauseNo": "第二条", "clauseType": "PAYMENT", "text": "本合同总金额为人民币伍拾万元整。" }
+      ],
+      "modelOutput": "{\"contractAmount\":{\"value\":500000,\"span\":\"人民币伍拾万元整\"},\"paymentDays\":null,\"jurisdiction\":null,\"hasJointLiability\":{\"value\":true,\"span\":\"承担连带责任\"}}",
+      "expect": {
+        "status": "VERIFIED",
+        "contractAmount": 500000,
+        "paymentDays": null,
+        "jurisdiction": null,
+        "hasJointLiability": true,
+        "verifiedRate": 1.0
+      }
+    },
+    {
+      "id": "ex03",
+      "title": "模型给出账期但缺少原文片段：该字段转人工",
+      "clauses": [
+        { "clauseNo": "第三条", "clauseType": "PAYMENT", "text": "甲方应于验收合格后支付价款，具体期限另行约定。" }
+      ],
+      "modelOutput": "{\"contractAmount\":null,\"paymentDays\":{\"value\":90,\"span\":null},\"jurisdiction\":null,\"hasJointLiability\":null}",
+      "expect": {
+        "status": "PENDING_MANUAL",
+        "paymentDays": null,
+        "verifiedRate": 0.0,
+        "pendingField": "paymentDays",
+        "pendingReason": "span_missing"
+      }
+    },
+    {
+      "id": "ex04",
+      "title": "模型片段与原文不符（幻觉引用）：该字段转人工",
+      "clauses": [
+        { "clauseNo": "第二条", "clauseType": "PAYMENT", "text": "合同总价为人民币捌拾万元整。" }
+      ],
+      "modelOutput": "{\"contractAmount\":{\"value\":800000,\"span\":\"合同总价为人民币壹佰万元整\"},\"paymentDays\":null,\"jurisdiction\":null,\"hasJointLiability\":null}",
+      "expect": {
+        "status": "PENDING_MANUAL",
+        "contractAmount": null,
+        "verifiedRate": 0.0,
+        "pendingField": "contractAmount",
+        "pendingReason": "span_not_found"
+      }
+    },
+    {
+      "id": "ex05",
+      "title": "无可抽取字段的框架协议：全部 null 视为通过",
+      "clauses": [
+        { "clauseNo": "第一条", "clauseType": "OTHER", "text": "双方就后续合作事宜达成框架意向。" }
+      ],
+      "modelOutput": "{\"contractAmount\":null,\"paymentDays\":null,\"jurisdiction\":null,\"hasJointLiability\":null}",
+      "expect": {
+        "status": "VERIFIED",
+        "contractAmount": null,
+        "verifiedRate": 1.0,
+        "valueCount": 0
+      }
+    },
+    {
+      "id": "ex06",
+      "title": "全角与空格差异：归一化后仍应通过",
+      "clauses": [
+        { "clauseNo": "第二条", "clauseType": "PAYMENT", "text": "合同总价为人民币叁拾万元整。" },
+        { "clauseNo": "第三条", "clauseType": "PAYMENT", "text": "甲方应在收到发票后９０日内付款。" }
+      ],
+      "modelOutput": "{\"contractAmount\":{\"value\":300000,\"span\":\"合同总价为人民币叁拾万元整。\"},\"paymentDays\":{\"value\":90,\"span\":\"收到发票后90日内\"},\"jurisdiction\":null,\"hasJointLiability\":null}",
+      "expect": {
+        "status": "VERIFIED",
+        "contractAmount": 300000,
+        "paymentDays": 90,
+        "verifiedRate": 1.0
+      }
+    }
+  ]
+}

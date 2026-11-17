@@ -1,0 +1,194 @@
+[
+  {
+    "id": "q01",
+    "query": "采购合同签完后，预付款最多能付到合同金额的多少？",
+    "clauseType": "PAYMENT",
+    "doc": "采购管理制度",
+    "clauseNo": "第四条",
+    "split": "dev"
+  },
+  {
+    "id": "q02",
+    "query": "合同盖章前必须核验哪些授权和审批手续？",
+    "clauseType": "OTHER",
+    "doc": "合同管理办法",
+    "clauseNo": "第四条",
+    "split": "dev"
+  },
+  {
+    "id": "q03",
+    "query": "单笔预付款超过八十万元，需要哪几级领导审批？",
+    "clauseType": "PAYMENT",
+    "doc": "付款审批制度",
+    "clauseNo": "第三条",
+    "split": "dev"
+  },
+  {
+    "id": "q04",
+    "query": "员工自己整理出来的客户名单算不算公司的保密信息？",
+    "clauseType": "CONFIDENTIALITY",
+    "doc": "保密管理制度",
+    "clauseNo": "第二条",
+    "split": "dev"
+  },
+  {
+    "id": "q05",
+    "query": "涉外合同可以把管辖法院约定在境外中立地吗？",
+    "clauseType": "JURISDICTION",
+    "doc": "争议解决工作指引",
+    "clauseNo": "第四条",
+    "split": "dev"
+  },
+  {
+    "id": "q06",
+    "query": "对方迟迟不交货，催告后多久仍不履行可以认定根本违约？",
+    "clauseType": "BREACH",
+    "doc": "合同违约处理规范",
+    "clauseNo": "第二条",
+    "split": "dev"
+  },
+  {
+    "id": "q07",
+    "query": "供应商晚交货的话，每天的违约金按什么比例计算？",
+    "clauseType": "BREACH",
+    "doc": "采购管理制度",
+    "clauseNo": "第六条",
+    "split": "dev"
+  },
+  {
+    "id": "q08",
+    "query": "合同约定的保密期限通常从哪一天开始起算？",
+    "clauseType": "CONFIDENTIALITY",
+    "doc": "合同管理办法",
+    "clauseNo": "第六条",
+    "split": "dev"
+  },
+  {
+    "id": "q09",
+    "query": "十万元到五十万元的费用支出由谁审批？",
+    "clauseType": "OTHER",
+    "doc": "付款审批制度",
+    "clauseNo": "第四条",
+    "split": "dev"
+  },
+  {
+    "id": "q10",
+    "query": "员工泄密被查实后，除了赔偿还要承担多少违约金？",
+    "clauseType": "BREACH",
+    "doc": "保密管理制度",
+    "clauseNo": "第八条",
+    "split": "dev"
+  },
+  {
+    "id": "q11",
+    "query": "因为不可抗力耽误了举证期限，事后还能申请补救吗？",
+    "clauseType": "DISCLAIMER",
+    "doc": "争议解决工作指引",
+    "clauseNo": "第九条",
+    "split": "dev"
+  },
+  {
+    "id": "q12",
+    "query": "合作结束后，对方手里的保密资料最晚多久要交还？",
+    "clauseType": "CONFIDENTIALITY",
+    "doc": "合同违约处理规范",
+    "clauseNo": "第九条",
+    "split": "dev"
+  },
+  {
+    "id": "q13",
+    "query": "地震导致供应商交不了货，多久内必须书面通知我们？",
+    "clauseType": "DISCLAIMER",
+    "doc": "采购管理制度",
+    "clauseNo": "第八条",
+    "split": "dev"
+  },
+  {
+    "id": "q14",
+    "query": "合同里的付款节点最多可以设置几个？",
+    "clauseType": "PAYMENT",
+    "doc": "合同管理办法",
+    "clauseNo": "第五条",
+    "split": "dev"
+  },
+  {
+    "id": "q15",
+    "query": "因政府管制没法按期付钱，最晚几天内要提交说明？",
+    "clauseType": "DISCLAIMER",
+    "doc": "付款审批制度",
+    "clauseNo": "第八条",
+    "split": "dev"
+  },
+  {
+    "id": "q16",
+    "query": "对方已经说不履行合同了，几天内要填报争议报告表？",
+    "clauseType": "OTHER",
+    "doc": "争议解决工作指引",
+    "clauseNo": "第二条",
+    "split": "dev"
+  },
+  {
+    "id": "q17",
+    "query": "追责走法律程序，最迟要在时效届满前多久启动？",
+    "clauseType": "JURISDICTION",
+    "doc": "合同违约处理规范",
+    "clauseNo": "第十条",
+    "split": "dev"
+  },
+  {
+    "id": "q18",
+    "query": "合同里同时写了法院管辖和仲裁，这种约定有效吗？",
+    "clauseType": "JURISDICTION",
+    "doc": "合同管理办法",
+    "clauseNo": "第八条",
+    "split": "val"
+  },
+  {
+    "id": "q19",
+    "query": "定金最多可以约定为主合同标的额的多少？",
+    "clauseType": "BREACH",
+    "doc": "合同管理办法",
+    "clauseNo": "第七条",
+    "split": "val"
+  },
+  {
+    "id": "q20",
+    "query": "调阅已归档的采购项目资料需要谁批准？",
+    "clauseType": "OTHER",
+    "doc": "采购管理制度",
+    "clauseNo": "第九条",
+    "split": "val"
+  },
+  {
+    "id": "q21",
+    "query": "跟供应商约定的付款账期最长不能超过多少天？",
+    "clauseType": "PAYMENT",
+    "doc": "付款审批制度",
+    "clauseNo": "第五条",
+    "split": "val"
+  },
+  {
+    "id": "q22",
+    "query": "合同已经迟延履行后才碰上不可抗力，还能免责吗？",
+    "clauseType": "DISCLAIMER",
+    "doc": "合同违约处理规范",
+    "clauseNo": "第七条",
+    "split": "val"
+  },
+  {
+    "id": "q23",
+    "query": "标的不到一百万元的纠纷，原则上能约定仲裁吗？",
+    "clauseType": "JURISDICTION",
+    "doc": "争议解决工作指引",
+    "clauseNo": "第五条",
+    "split": "val"
+  },
+  {
+    "id": "q24",
+    "query": "技术类保密信息最少需要保密多少年？",
+    "clauseType": "CONFIDENTIALITY",
+    "doc": "保密管理制度",
+    "clauseNo": "第四条",
+    "split": "val"
+  }
+]

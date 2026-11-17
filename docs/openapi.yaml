@@ -1,0 +1,1177 @@
+openapi: 3.1.0
+info:
+  title: 企业合同风控智能审核 Agent API
+  version: 0.1.0
+  description: |
+    合同接收、解析进度与条款切片接口。
+
+    **业务边界**：本系统为合同初审辅助工具，输出的风险清单与报告仅供参考。
+    系统不做法律意见、不替代法务决策、不承诺审核结论必然正确、不对合同的法律效力作出判断。
+
+    **统一响应**：HTTP 状态码恒为 200，业务结果由响应体 `code` 表达；跨租户访问与资源不存在返回同一响应，
+    避免资源存在性枚举。错误码分段：0 成功、1xxxx 通用、2xxxx 文档处理、3xxxx 知识库、4xxxx 审核、5xxxx 安全。
+
+    **身份**：租户与操作人由服务端解析并注入上下文，禁止从请求体或查询参数传递。
+servers:
+  - url: http://127.0.0.1:8080
+    description: 本地开发环境
+tags:
+  - name: 合同
+    description: 合同接收、解析进度与条款切片
+  - name: 知识库
+    description: 文档管理、上下架与增量同步
+paths:
+  /api/v1/contracts:
+    get:
+      tags: [合同]
+      summary: 租户合同列表
+      description: 仅当前租户；附带最近一次审核状态（UNREVIEWED 表示未审核）与任务标识
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, default: 1}
+        - name: size
+          in: query
+          schema: {type: integer, default: 20, maximum: 100}
+      responses:
+        '200':
+          description: 合同分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    post:
+      tags: [合同]
+      summary: 上传合同并发起解析
+      description: |
+        类型白名单 PDF / DOC / DOCX，必须通过魔数校验；单文件不超过 50MB。
+        同租户同文件哈希直接秒传，返回已有合同与任务标识，不重复解析。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 合同文件，字段名固定为 file
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ContractUploadResponse'
+              examples:
+                success:
+                  value:
+                    code: 0
+                    message: 成功
+                    data:
+                      contractId: '1000000000000000001'
+                      taskId: '1000000000000000002'
+                      deduplicated: false
+                    traceId: 8f1c2a3b4d5e4f60a7b8c9d0e1f2a3b4
+                    timestamp: 1791700000000
+  /api/v1/contracts/{contractId}:
+    delete:
+      tags: [合同]
+      summary: 删除合同
+      description: 任意审核状态均可删；逻辑删除合同与切片，审核历史保留供追溯
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      responses:
+        '200':
+          description: 删除结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    get:
+      tags: [合同]
+      summary: 合同详情
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ContractDetailResponse'
+  /api/v1/contracts/{contractId}/parse-task:
+    get:
+      tags: [合同]
+      summary: 解析任务状态
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ParseTaskResponse'
+  /api/v1/contracts/{contractId}/parse-task/retry:
+    post:
+      tags: [合同]
+      summary: 人工重试解析
+      description: 仅失败态可重试，总尝试次数不超过三次；退避间隔为 1/4/16 分钟。
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ParseTaskResponse'
+  /api/v1/contracts/{contractId}/clauses:
+    get:
+      tags: [合同]
+      summary: 条款切片列表
+      description: 按全文递增索引升序返回，单次最多 200 条。
+      parameters:
+        - $ref: '#/components/parameters/ContractId'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ClauseResponse'
+  /api/v1/kb/documents/upload:
+    post:
+      tags: [知识库]
+      summary: 上传知识库文档（PDF/DOC/DOCX）
+      description: 复用合同解析链路校验格式与魔数，解析正文后创建知识库文档；不生成合同记录
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+                title: {type: string, description: 标题，缺省取文件名}
+                docType:
+                  type: string
+                  enum: [INSTITUTION, CASE]
+                  default: INSTITUTION
+                activate: {type: boolean, default: true}
+      responses:
+        '200':
+          description: 创建结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          docId: {type: string}
+                          title: {type: string}
+                          syncStatus: {type: string}
+                          versionNo: {type: integer}  /api/v1/kb/documents:
+    post:
+      tags: [知识库]
+      summary: 新建知识库文档
+      description: 上架时异步触发增量向量写入，仅变化切片重新嵌入。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKbDocRequest'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/KbDocResponse'
+    get:
+      tags: [知识库]
+      summary: 知识库文档列表
+      parameters:
+        - name: active
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/KbDocResponse'
+  /api/v1/kb/documents/{docId}:
+    get:
+      tags: [知识库]
+      summary: 知识库文档详情
+      parameters:
+        - $ref: '#/components/parameters/KbDocId'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/KbDocResponse'
+  /api/v1/kb/documents/{docId}/content:
+    put:
+      tags: [知识库]
+      summary: 更新知识库正文
+      parameters:
+        - $ref: '#/components/parameters/KbDocId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateKbDocContentRequest'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/KbDocResponse'
+  /api/v1/kb/documents/{docId}/publish:
+    post:
+      tags: [知识库]
+      summary: 上架文档
+      parameters:
+        - $ref: '#/components/parameters/KbDocId'
+      responses:
+        '200':
+          description: 处理结果
+  /api/v1/kb/documents/{docId}/unpublish:
+    post:
+      tags: [知识库]
+      summary: 下架文档
+      parameters:
+        - $ref: '#/components/parameters/KbDocId'
+      responses:
+        '200':
+          description: 处理结果
+  /api/v1/kb/documents/{docId}/sync:
+    post:
+      tags: [知识库]
+      summary: 手动同步向量
+      parameters:
+        - $ref: '#/components/parameters/KbDocId'
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/KbSyncResponse'
+  /api/v1/rules:
+    get:
+      tags: [规则]
+      summary: 规则列表
+      description: 默认只返回启用规则；灰度试跑需 includeDisabled=true
+      parameters:
+        - name: includeDisabled
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 规则列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/RuleResponse'
+    post:
+      tags: [规则]
+      summary: 新建规则
+      description: 保存前强制校验编码格式、表达式白名单与正反例回放；默认不启用，先灰度试跑
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleRequest'
+      responses:
+        '200':
+          description: 新建的规则
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RuleResponse'
+  /api/v1/rules/{ruleId}:
+    parameters:
+      - $ref: '#/components/parameters/RuleId'
+    get:
+      tags: [规则]
+      summary: 规则详情
+      responses:
+        '200':
+          description: 规则
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RuleResponse'
+    put:
+      tags: [规则]
+      summary: 修改规则
+      description: 规则编码不可变；版本号 +1 并写入变更日志
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleRequest'
+      responses:
+        '200':
+          description: 修改后的规则
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RuleResponse'
+  /api/v1/rules/{ruleId}/enable:
+    parameters:
+      - $ref: '#/components/parameters/RuleId'
+    post:
+      tags: [规则]
+      summary: 启用规则
+      responses:
+        '200':
+          description: 变更后的规则
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RuleResponse'
+  /api/v1/rules/{ruleId}/disable:
+    parameters:
+      - $ref: '#/components/parameters/RuleId'
+    post:
+      tags: [规则]
+      summary: 停用规则
+      responses:
+        '200':
+          description: 变更后的规则
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RuleResponse'
+  /api/v1/rules/{ruleId}/dry-run:
+    parameters:
+      - $ref: '#/components/parameters/RuleId'
+    post:
+      tags: [规则]
+      summary: 规则试算
+      description: 给定上下文求值，不写库、不影响缓存
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleDryRunRequest'
+      responses:
+        '200':
+          description: 是否命中
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          matched:
+                            type: boolean
+  /api/v1/rules/refresh:
+    post:
+      tags: [规则]
+      summary: 刷新规则缓存
+      description: 不等待定时任务，立即生效；返回新版本
+      responses:
+        '200':
+          description: 缓存状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RuleCacheStatus'
+  /api/v1/rules/cache:
+    get:
+      tags: [规则]
+      summary: 规则缓存状态
+      responses:
+        '200':
+          description: 缓存状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RuleCacheStatus'
+  /api/v1/agent/tools:
+    get:
+      tags: [初审预演]
+      summary: 工具清单
+      responses:
+        '200':
+          description: 注册中心统一注册的工具及超时、幂等属性
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ToolDescriptor'
+  /api/v1/contracts/{contractId}/review:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [初审预演]
+      summary: 初审预演
+      description: 规则优先、检索取证、模型判断、报告导出；不写 audit_task（第 8–9 周接入）
+      parameters:
+        - name: rulesOnly
+          in: query
+          description: 仅规则模式（等价熔断期降级，也用于规则热更新验证）
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 预演结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ReviewResponse'
+  /api/v1/audit/tasks/run:
+    post:
+      tags: [审核]
+      summary: 发起审核
+      description: 幂等创建任务并异步执行；返回 taskId 与 SSE 订阅地址
+      parameters:
+        - name: contractId
+          in: query
+          required: true
+          schema: {type: integer, format: int64}
+        - name: rulesOnly
+          in: query
+          schema: {type: boolean, default: false}
+      responses:
+        '200':
+          description: 任务信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          taskId: {type: string}
+                          status: {type: string}
+                          streamUrl: {type: string}
+  /api/v1/audit/tasks:
+    post:
+      tags: [审核]
+      summary: 创建或复用审核任务
+      description: 同合同同版本重复提交返回已有任务
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contractId]
+              properties:
+                contractId: {type: integer, format: int64}
+                contractVersion: {type: integer}
+      responses:
+        '200':
+          description: 任务
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuditTask'
+  /api/v1/audit/tasks/{taskId}:
+    get:
+      tags: [审核]
+      summary: 任务详情
+      parameters:
+        - $ref: '#/components/parameters/AuditTaskId'
+      responses:
+        '200':
+          description: 任务
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuditTask'
+  /api/v1/audit/tasks/{taskId}/risks:
+    get:
+      tags: [审核]
+      summary: 风险清单
+      parameters:
+        - $ref: '#/components/parameters/AuditTaskId'
+      responses:
+        '200':
+          description: 风险项
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditRisk'
+  /api/v1/audit/tasks/{taskId}/risks/{riskId}/review:
+    post:
+      tags: [审核]
+      summary: 复核风险项
+      description: PASS/REJECT/NEED_FIX；REJECT 必须带四类原因码；versionNo 为乐观锁
+      parameters:
+        - $ref: '#/components/parameters/AuditTaskId'
+        - name: riskId
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditReviewRequest'
+      responses:
+        '200':
+          description: 复核结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          risk:
+                            $ref: '#/components/schemas/AuditRisk'
+                          task:
+                            $ref: '#/components/schemas/AuditTask'
+  /api/v1/audit/tasks/{taskId}/complete:
+    post:
+      tags: [审核]
+      summary: 完成审核
+      description: 存在未复核的高/中风险时返回 40001
+      parameters:
+        - $ref: '#/components/parameters/AuditTaskId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                conclusion: {type: string}
+      responses:
+        '200':
+          description: 任务
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuditTask'
+  /api/v1/audit/tasks/{taskId}/cancel:
+    post:
+      tags: [审核]
+      summary: 取消审核
+      parameters:
+        - $ref: '#/components/parameters/AuditTaskId'
+      responses:
+        '200':
+          description: 任务
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuditTask'
+  /api/v1/audit/tasks/{taskId}/stream:
+    get:
+      tags: [审核]
+      summary: 审核进度（SSE）
+      description: 事件固定 progress/risk/complete/error，每 15 秒心跳；断线按任务标识续订
+      parameters:
+        - $ref: '#/components/parameters/AuditTaskId'
+      responses:
+        '200':
+          description: 事件流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /api/v1/audit/tasks/latest:
+    get:
+      tags: [审核]
+      summary: 合同最近一次审核任务
+      description: 输入合同标识刷新时使用；没有任务返回 10004
+      parameters:
+        - name: contractId
+          in: query
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '200':
+          description: 最近任务
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          taskId: {type: string}
+                          status: {type: string}
+                          streamUrl: {type: string}  /api/v1/audit/tasks/{taskId}/report:
+    get:
+      tags: [审核]
+      summary: 下载审核报告（DOCX）
+      description: 附件流返回；报告未生成或文件缺失时返回 10004
+      parameters:
+        - $ref: '#/components/parameters/AuditTaskId'
+      responses:
+        '200':
+          description: DOCX 附件
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary  /api/v1/audit/hard-negatives/export:
+    post:
+      tags: [审核]
+      summary: 导出 hard negatives
+      parameters:
+        - name: since
+          in: query
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: 导出结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          filePath: {type: string}
+                          total: {type: integer}
+components:
+  parameters:
+    RuleId:
+      name: ruleId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: 规则标识
+    KbDocId:
+      name: docId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: 知识库文档标识
+    ContractId:
+      name: contractId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: 合同标识（雪花标识）
+  schemas:
+    ApiResponse:
+      type: object
+      required: [code, message, traceId, timestamp]
+      properties:
+        code:
+          type: integer
+          description: 业务状态码，0 表示成功
+          examples: [0]
+        message:
+          type: string
+          description: 面向用户的提示消息
+        data:
+          description: 数据体
+        traceId:
+          type: string
+          description: 链路标识
+        timestamp:
+          type: integer
+          format: int64
+          description: 服务端 UTC 毫秒时间戳
+    ContractUploadResponse:
+      type: object
+      required: [contractId, taskId, deduplicated]
+      properties:
+        contractId:
+          type: string
+          description: 合同标识（字符串化，避免前端精度丢失）
+        taskId:
+          type: string
+          description: 解析任务标识（字符串化）
+        deduplicated:
+          type: boolean
+          description: 是否命中秒传
+    ContractDetailResponse:
+      type: object
+      properties:
+        contractId:
+          type: string
+        name:
+          type: string
+        format:
+          type: string
+          enum: [PDF, DOC, DOCX]
+        fileSize:
+          type: integer
+          format: int64
+        pageCount:
+          type: integer
+        versionNo:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    ParseTaskResponse:
+      type: object
+      properties:
+        taskId:
+          type: string
+        contractId:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, PARSING, SPLITTING, EMBEDDING, READY, FAILED]
+        retryCount:
+          type: integer
+        errorCode:
+          type: string
+          nullable: true
+          description: 失败错误码名称，如 PARSE_FAILED
+        nextRetryAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+    CreateKbDocRequest:
+      type: object
+      required: [title, docType, content]
+      properties:
+        title:
+          type: string
+        docType:
+          type: string
+          enum: [INSTITUTION, CASE]
+        content:
+          type: string
+          description: 已解析正文
+        activate:
+          type: boolean
+    UpdateKbDocContentRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+    KbDocResponse:
+      type: object
+      properties:
+        docId:
+          type: string
+        docKey:
+          type: string
+        title:
+          type: string
+        docType:
+          type: string
+          enum: [INSTITUTION, CASE]
+        versionNo:
+          type: integer
+        active:
+          type: boolean
+        syncStatus:
+          type: string
+          enum: [PENDING, EMBEDDING, READY, FAILED]
+        lastSyncedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    KbSyncResponse:
+      type: object
+      properties:
+        inserted:
+          type: integer
+        updated:
+          type: integer
+        skipped:
+          type: integer
+        deleted:
+          type: integer
+        skipRatio:
+          type: number
+    ClauseResponse:
+      type: object
+      properties:
+        clauseNo:
+          type: string
+          description: 条款序号，如“第三条”“1.1”“（一）”“前言”
+        clauseType:
+          type: string
+          enum: [BREACH, CONFIDENTIALITY, PAYMENT, JURISDICTION, DISCLAIMER, OTHER]
+        typeSource:
+          type: string
+          enum: [KEYWORD, MODEL, MANUAL, DEFAULT]
+        text:
+          type: string
+        fullTextIndex:
+          type: integer
+        charStart:
+          type: integer
+        charEnd:
+          type: integer
+    RuleRequest:
+      type: object
+      required: [ruleName, clauseType, scope, conditionExpr, riskLevel, suggestionTemplate, positiveExample, negativeExample, ownerName]
+      properties:
+        ruleCode:
+          type: string
+          description: 三段式编码；修改时不传或传原值
+          example: PAYMENT.MAX_PAYMENT_DAYS.01
+        ruleName: {type: string, maxLength: 128}
+        clauseType:
+          type: string
+          enum: [BREACH, CONFIDENTIALITY, PAYMENT, JURISDICTION, DISCLAIMER, OTHER, CONTRACT]
+        scope:
+          type: string
+          enum: [CLAUSE, CONTRACT]
+        conditionExpr:
+          type: string
+          maxLength: 500
+          description: Aviator 表达式；变量白名单见规范 8.2（合同级额外可读 presentTypes）
+          example: paymentDays > 90
+        riskLevel:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        suggestionTemplate: {type: string, maxLength: 500}
+        enabled: {type: boolean, default: false}
+        positiveExample:
+          type: string
+          description: 正例 JSON（含完整求值上下文与 expected=true）
+        negativeExample:
+          type: string
+          description: 反例 JSON（expected=false）
+        ownerName: {type: string, maxLength: 64}
+    RuleResponse:
+      type: object
+      properties:
+        id: {type: string}
+        ruleCode: {type: string}
+        ruleName: {type: string}
+        clauseType: {type: string}
+        scope: {type: string, enum: [CLAUSE, CONTRACT]}
+        conditionExpr: {type: string}
+        riskLevel: {type: string, enum: [HIGH, MEDIUM, LOW]}
+        riskLevelLabel: {type: string}
+        suggestionTemplate: {type: string}
+        enabled: {type: boolean}
+        versionNo: {type: integer}
+        positiveExample: {type: string}
+        negativeExample: {type: string}
+        ownerName: {type: string}
+        updatedAt: {type: string, format: date-time}
+    RuleDryRunRequest:
+      type: object
+      properties:
+        clauseText: {type: string}
+        clauseType: {type: string}
+        contractAmount: {type: number}
+        paymentDays: {type: integer}
+        jurisdiction: {type: string}
+        hasJointLiability: {type: boolean}
+        presentTypes:
+          type: array
+          items: {type: string}
+    RuleCacheStatus:
+      type: object
+      properties:
+        version: {type: integer, format: int64, description: 缓存版本（规则最大更新时间）}
+        tenantRules: {type: integer}
+        enabledRules: {type: integer}
+    ToolDescriptor:
+      type: object
+      properties:
+        name: {type: string, enum: [rule_check_tool, risk_retrieval_tool, report_export_tool]}
+        timeoutMillis: {type: integer}
+        idempotent: {type: boolean}
+        description: {type: string}
+    ReviewResponse:
+      type: object
+      properties:
+        contractId: {type: string}
+        extraction:
+          type: object
+          properties:
+            contractAmount: {type: number, nullable: true}
+            paymentDays: {type: integer, nullable: true}
+            jurisdiction: {type: string, nullable: true}
+            hasJointLiability: {type: boolean, nullable: true}
+            status: {type: string, enum: [VERIFIED, PENDING_MANUAL, DEGRADED]}
+            verifiedRate: {type: number, description: 抽取回验通过率（实测值）}
+            verifiedCount: {type: integer}
+            valueCount: {type: integer}
+            promptVersion: {type: string}
+            modelName: {type: string}
+            degraded: {type: boolean}
+            degradeReason: {type: string, nullable: true}
+            fields:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: {type: string}
+                  value: {type: string, nullable: true}
+                  span: {type: string, nullable: true}
+                  verified: {type: boolean}
+                  reason: {type: string, nullable: true}
+        risks:
+          type: array
+          items:
+            type: object
+            properties:
+              level: {type: string, enum: [HIGH, MEDIUM, LOW]}
+              levelLabel: {type: string}
+              clauseNo: {type: string}
+              clauseType: {type: string}
+              title: {type: string}
+              content: {type: string}
+              suggestion: {type: string}
+              sourceDocName: {type: string}
+              chunkKey: {type: string, description: "切片定位，格式 contract:{id}#{序号} 或知识库 chunk_key"}
+              excerpt: {type: string}
+              source: {type: string, enum: [RULE, MODEL, RULE_CONFLICT]}
+              ruleCode: {type: string, nullable: true}
+              ruleVersion: {type: integer, nullable: true}
+              manualRequired: {type: boolean}
+              citationVerified: {type: boolean}
+        reportPath:
+          type: string
+          description: 报告相对路径；语义同 report_url（最近一次导出位置）
+        stats:
+          type: object
+          properties:
+            clauseCount: {type: integer}
+            toolCalls: {type: integer}
+            modelCalls: {type: integer}
+            ruleFailures: {type: integer}
+            retrievalDegraded: {type: boolean}
+            modelDegraded: {type: boolean}
+            budgetExhausted: {type: boolean}
+            converged: {type: boolean}
+            manualRequired: {type: boolean}
+            elapsedMillis: {type: integer, format: int64}
+            promptVersion: {type: string}
+            modelVersion: {type: string}
+            degradeReasons:
+              type: array
+              items: {type: string}
+    AuditTask:
+      type: object
+      properties:
+        id: {type: string}
+        contractId: {type: string}
+        contractVersion: {type: integer}
+        status:
+          type: string
+          enum: [CREATED, PARSING, AUDITING, PENDING_REVIEW, COMPLETED, FAILED, CANCELLED]
+        reportUrl: {type: string, nullable: true, description: 最近一次导出文件位置}
+        modelVersion: {type: string, nullable: true}
+        promptVersion: {type: string, nullable: true}
+        conclusion: {type: string, nullable: true}
+        startedAt: {type: string, format: date-time, nullable: true}
+        finishedAt: {type: string, format: date-time, nullable: true}
+    AuditRisk:
+      type: object
+      properties:
+        id: {type: string}
+        level: {type: string, enum: [HIGH, MEDIUM, LOW]}
+        content: {type: string}
+        suggestion: {type: string, nullable: true}
+        source: {type: string, enum: [RULE, MODEL, RULE_CONFLICT]}
+        ruleCode: {type: string, nullable: true}
+        clauseNo: {type: string, nullable: true}
+        sourceChunkKey: {type: string, nullable: true}
+        sourceExcerpt: {type: string, nullable: true}
+        citationVerified: {type: boolean}
+        reviewed: {type: boolean}
+        reviewResult: {type: string, nullable: true, enum: [PASS, REJECT, NEED_FIX, null]}
+        versionNo: {type: integer, description: 乐观锁版本，复核请求必须回传}
+    AuditReviewRequest:
+      type: object
+      required: [action, versionNo]
+      properties:
+        action: {type: string, enum: [PASS, REJECT, NEED_FIX]}
+        reasonCode:
+          type: string
+          nullable: true
+          enum: [IRRELEVANT_RETRIEVAL, WRONG_CITATION, RULE_FALSE_POSITIVE, SEMANTIC_MISJUDGE]
+          description: 驳回必填（检索无关/引用错误/规则误报/语义误判）
+        comment: {type: string, nullable: true}
+        versionNo: {type: integer, description: 期望版本（乐观锁）}

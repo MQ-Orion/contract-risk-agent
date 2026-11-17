@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  知识库切片 SQL（规范 4.3、6.2）。
+
+  为什么放在 XML 而不是注解：
+  1. 本文件的 SQL 含 pgvector 操作符、ON CONFLICT 与多段动态条件，注解字符串里的 <script> 会被 IDE
+     的 SQL 检查当成裸 SQL 解析（<script>、#{}、&lt; 全部报错），XML 才是 MyBatis 动态 SQL 的原生载体；
+  2. SQL 与 Java 接口分离后，接口只保留参数契约，评审时能单独看 SQL。
+
+  租户：接口上保留 @InterceptorIgnore(tenantLine=true)，因为 JSqlParser 无法解析 <=> 与 ON CONFLICT；
+  因此每条语句都必须显式带 tenant_id（或仅按全局唯一的 chunk_key 操作）。
+-->
+<mapper namespace="com.crag.kb.infrastructure.persistence.mapper.KbChunkMapper">
+
+    <!-- 条件 upsert：内容哈希未变化的行不重写文本、向量与更新时间（规范 4.3 增量写入） -->
+    <insert id="upsertChanged">
+        INSERT INTO kb_chunk (id, tenant_id, kb_doc_id, chunk_key, clause_no, chunk_text, chunk_type, content_hash,
+                              embedding)
+        VALUES
+        <foreach collection="rows" item="c" separator=",">
+            (#{c.id}, #{c.tenantId}, #{c.kbDocId}, #{c.chunkKey}, #{c.clauseNo}, #{c.chunkText}, #{c.chunkType},
+             #{c.contentHash}, CAST(#{c.embeddingLiteral} AS vector))
+        </foreach>
+        ON CONFLICT (chunk_key) DO UPDATE SET
+            kb_doc_id = EXCLUDED.kb_doc_id,
+            chunk_text = EXCLUDED.chunk_text,
+            content_hash = EXCLUDED.content_hash,
+            embedding = EXCLUDED.embedding,
+            deleted = 0,
+            updated_at = now()
+        <![CDATA[
+        WHERE kb_chunk.content_hash IS DISTINCT FROM EXCLUDED.content_hash
+        ]]>
+    </insert>
+
+    <!--
+      版本切换：把未变化切片重绑到新版本文档。
+      只改 kb_doc_id，不动文本、向量与 updated_at：未变化切片本就“没有变更”，改文本/向量会破坏增量语义；
+      但不改归属又会让新版本查不到切片（规范 9.5）。
+    -->
+    <update id="rebindDocId">
+        UPDATE kb_chunk SET kb_doc_id = #{kbDocId}
+        WHERE tenant_id = #{tenantId}
+          AND deleted = 0
+        <![CDATA[
+          AND kb_doc_id <> #{kbDocId}
+        ]]>
+          AND chunk_key IN
+        <foreach collection="keys" item="k" open="(" separator="," close=")">#{k}</foreach>
+    </update>
+
+    <!-- 按逻辑文档前缀取哈希：chunk_key 跨版本稳定，按 kb_doc_id 取会把新版本全判为“新增” -->
+    <select id="selectHashesByDocKey" resultType="java.util.Map">
+        SELECT chunk_key AS chunk_key, content_hash AS content_hash
+        FROM kb_chunk
+        WHERE tenant_id = #{tenantId}
+          AND chunk_key LIKE #{prefix}
+          AND deleted = 0
+    </select>
+
+    <!-- 按文档取已有哈希，用于同步后核对 -->
+    <select id="selectHashes" resultType="java.util.Map">
+        SELECT chunk_key AS chunk_key, content_hash AS content_hash
+        FROM kb_chunk
+        WHERE kb_doc_id = #{kbDocId}
+          AND deleted = 0
+    </select>
+
+    <!-- 某文档全部切片，供同步后核对 -->
+    <select id="selectByDoc" resultType="com.crag.kb.infrastructure.persistence.row.KbChunkSearchRow">
+        SELECT id,
+               chunk_key,
+               chunk_text,
+               chunk_type,
+               kb_doc_id    AS source_doc_id,
+               NULL         AS source_doc_title,
+               0            AS score
+        FROM kb_chunk
+        WHERE kb_doc_id = #{kbDocId}
+          AND deleted = 0
+        ORDER BY id
+    </select>
+
+    <!-- 物理删除过期切片：切片是正文派生数据，且 chunk_key 全局唯一，逻辑删除会阻塞同键重建 -->
+    <delete id="deleteByKeys">
+        DELETE FROM kb_chunk WHERE chunk_key IN
+        <foreach collection="keys" item="k" open="(" separator="," close=")">#{k}</foreach>
+    </delete>
+
+    <!-- 文档切片数 -->
+    <select id="countByDoc" resultType="int">
+        SELECT count(*) FROM kb_chunk WHERE kb_doc_id = #{kbDocId} AND deleted = 0
+    </select>
+
+    <!--
+      向量路召回（规范 6.2）：只查上架版本、限定租户，按余弦距离升序。
+      <=> 是余弦距离 [0,2]，越小越相似；score = 1 - 距离，越大越相似，阈值 0.50 作用于本路首位原始分。
+      索引：WHERE / ORDER BY 未改变列类型，可命中 HNSW 索引 idx_kb_chunk_embedding；
+      d.is_active = 1 在 JOIN 后过滤，属预期代价（切片量级内可接受），详见 ADR 0004。
+    -->
+    <select id="vectorSearch" resultType="com.crag.kb.infrastructure.persistence.row.KbChunkSearchRow">
+        SELECT c.id                        AS id,
+               c.chunk_key                 AS chunk_key,
+               c.chunk_text                AS chunk_text,
+               c.chunk_type                AS chunk_type,
+               d.id                        AS source_doc_id,
+               d.title                     AS source_doc_title,
+               1 - (c.embedding <![CDATA[<=>]]> CAST(#{queryVector} AS vector)) AS score
+        FROM kb_chunk c
+                 JOIN kb_doc d ON d.id = c.kb_doc_id
+        WHERE c.tenant_id = #{tenantId}
+          AND c.deleted = 0
+          AND d.deleted = 0
+          AND d.is_active = 1
+        <if test="clauseType != null">
+            AND c.chunk_type = #{clauseType}
+        </if>
+        ORDER BY c.embedding <![CDATA[<=>]]> CAST(#{queryVector} AS vector)
+        LIMIT #{limit}
+    </select>
+
+    <!--
+      关键词路召回（规范 6.2）：crag_cn 分词 + ts_rank_cd，限定租户与上架版本。
+      score 为 ts_rank_cd 原始分，融合前由 RRF 处理，不与向量分直接比较。
+    -->
+    <select id="keywordSearch" resultType="com.crag.kb.infrastructure.persistence.row.KbChunkSearchRow">
+        SELECT c.id                        AS id,
+               c.chunk_key                 AS chunk_key,
+               c.chunk_text                AS chunk_text,
+               c.chunk_type                AS chunk_type,
+               d.id                        AS source_doc_id,
+               d.title                     AS source_doc_title,
+               ts_rank_cd(c.tsv, plainto_tsquery('crag_cn', #{query})) AS score
+        FROM kb_chunk c
+                 JOIN kb_doc d ON d.id = c.kb_doc_id
+        WHERE c.tenant_id = #{tenantId}
+          AND c.deleted = 0
+          AND d.deleted = 0
+          AND d.is_active = 1
+          AND c.tsv @@ plainto_tsquery('crag_cn', #{query})
+        <if test="clauseType != null">
+            AND c.chunk_type = #{clauseType}
+        </if>
+        ORDER BY score DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>
