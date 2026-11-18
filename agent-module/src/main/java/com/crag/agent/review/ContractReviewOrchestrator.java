@@ -52,7 +52,6 @@ import org.springframework.stereotype.Service;
  *
  * <p>本编排不开启事务：模型调用在事务外，落库由各仓储在短事务内完成（规范 3.8）。</p>
  */
-@Service
 public class ContractReviewOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(ContractReviewOrchestrator.class);

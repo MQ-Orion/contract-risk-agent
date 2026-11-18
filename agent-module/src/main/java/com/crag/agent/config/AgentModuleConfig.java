@@ -4,7 +4,6 @@ import com.crag.agent.clause.ModelClauseTypeFallback;
 import com.crag.agent.extract.ContractExtractionService;
 import com.crag.agent.extract.ExtractionValidator;
 import com.crag.agent.extract.ExtractionVerifier;
-import com.crag.agent.model.ChatModelClient;
 import com.crag.agent.model.ChatModelProperties;
 import com.crag.agent.model.ModelCallLogRepository;
 import com.crag.agent.model.OpenAiCompatibleChatModelClient;
@@ -153,8 +152,9 @@ public class AgentModuleConfig {
      * @return 客户端
      */
     @Bean(destroyMethod = "close")
-    public ChatModelClient chatModelClient(ChatModelProperties properties, ObjectMapper objectMapper,
-                                           ModelCallLogRepository logRepository, Clock clock) {
+    public OpenAiCompatibleChatModelClient chatModelClient(ChatModelProperties properties,
+                                                           ObjectMapper objectMapper,
+                                                           ModelCallLogRepository logRepository, Clock clock) {
         return new OpenAiCompatibleChatModelClient(properties, objectMapper, logRepository, clock);
     }
 
